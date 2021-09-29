@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "backport": {
+      "commandName": "Project",
+      "commandLineArgs": "--token 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 --repository d:\\projects\\AvaloniaUI\\Avalonia"
+    }
+  }
+}

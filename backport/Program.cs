@@ -12,8 +12,20 @@ namespace Backport
 {
     internal class Program
     {
-        static async Task<int> Main(string token, DirectoryInfo? repository)
+        /// <summary>
+        /// Avalonia Backport
+        /// </summary>
+        /// <param name="token">The OAUTH token, with public_repo permission.</param>
+        /// <param name="repository">The path to the Avalonia repository. Default: current directory</param>
+        /// <param name="after">Skip until after this PR number</param>
+        static async Task<int> Main(string token, DirectoryInfo? repository, int? after = null)
         {
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                Console.WriteLine("Error: token not supplied.");
+                return 1;
+            };
+
             var productInformation = new ProductHeaderValue("AvaloniaBackport", "0.0.1");
             var connection = new Connection(productInformation, token);
             Repository repo;
@@ -49,6 +61,8 @@ namespace Backport
             var toMerge = (await connection.Run(query))
                 .Where(x => !x.Labels.Contains("backported 0.10.x") && !x.Labels.Contains("wont-backport"))
                 .OrderBy(x => x.MergedAt)
+                .SkipWhile(x => after.HasValue && x.Number != after.Value)
+                .Skip(after.HasValue ? 1 : 0)
                 .ToList();
 
             Console.WriteLine($"{toMerge.Count} PRs to backport:\n");

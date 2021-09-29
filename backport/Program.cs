@@ -47,7 +47,7 @@ namespace Backport
                 .Compile();
 
             var toMerge = (await connection.Run(query))
-                .Where(x => !x.Labels.Contains("backported 0.10.x"))
+                .Where(x => !x.Labels.Contains("backported 0.10.x") && !x.Labels.Contains("wont-backport"))
                 .OrderBy(x => x.MergedAt)
                 .ToList();
 
@@ -72,17 +72,30 @@ namespace Backport
             {
                 Console.WriteLine($"Merging #{pr.Number} {pr.Title} - {pr.MergeCommit}");
                 var commit = repo.Lookup<Commit>(pr.MergeCommit);
-                var result = repo.CherryPick(commit, signature, new() { Mainline = 1, CommitOnSuccess = true });
 
-                if (result.Status == CherryPickStatus.Conflicts)
+                try
                 {
-                    Console.WriteLine("CONFLICT. Fix the conflict and press Y to continue, any other key to abort");
+                    var options = new CherryPickOptions { CommitOnSuccess = true };
 
-                    if (!Confirm())
+                    if (commit.Parents.Count() > 1)
+                        options.Mainline = 1;
+
+                    var result = repo.CherryPick(commit, signature, options);
+
+                    if (result.Status == CherryPickStatus.Conflicts)
                     {
-                        Console.WriteLine("\nUser canceled.");
-                        return 2;
+                        Console.WriteLine("CONFLICT. Fix the conflict and press Y to continue, any other key to abort");
+
+                        if (!Confirm())
+                        {
+                            Console.WriteLine("\nUser canceled.");
+                            return 2;
+                        }
                     }
+                }
+                catch (EmptyCommitException e)
+                {
+                    Console.WriteLine(e.Message);
                 }
             }
 
@@ -92,7 +105,9 @@ namespace Backport
         private static bool Confirm()
         {
             var key = Console.ReadKey();
-            return key.KeyChar != 'Y' || key.KeyChar != 'y';
+            var result = key.KeyChar == 'Y' || key.KeyChar == 'y';
+            Console.WriteLine();
+            return result;
         }
     }
 }

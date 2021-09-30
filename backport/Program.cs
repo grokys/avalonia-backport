@@ -44,6 +44,8 @@ namespace Backport
                 return 1;
             }
 
+            Console.WriteLine("Reading pull requests...");
+
             var query = new Query()
                 .Repository("Avalonia", "AvaloniaUI")
                 .PullRequests(labels: new[] { "backport-candidate" }, states: new[] { PullRequestState.Merged })
@@ -59,7 +61,7 @@ namespace Backport
                 .Compile();
 
             var toMerge = (await connection.Run(query))
-                .Where(x => !x.Labels.Contains("backported 0.10.x") && !x.Labels.Contains("wont-backport"))
+                .Where(x => !x.Labels.Contains("wont-backport") && !x.Labels.Any(x => x.StartsWith("backported")))
                 .OrderBy(x => x.MergedAt)
                 .SkipWhile(x => after.HasValue && x.Number != after.Value)
                 .Skip(after.HasValue ? 1 : 0)

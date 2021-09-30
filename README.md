@@ -73,3 +73,11 @@ backport --token [token] --repository d:\projects\AvaloniaUI\Avalonia --after 65
 ```
 
 To merge all PRs subsequent to 6552.
+
+## After Completion
+
+Once all PRs have been merged to the branch, you need to:
+
+- Test!
+- Push the branch
+- Mark the relevant PRs with the `backported 0.10.x` etc label

@@ -1,6 +1,7 @@
 ﻿using System;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using LibGit2Sharp;
 using Octokit.GraphQL;
@@ -17,8 +18,13 @@ namespace Backport
         /// </summary>
         /// <param name="token">The OAUTH token, with public_repo permission.</param>
         /// <param name="repository">The path to the Avalonia repository. Default: current directory</param>
+        /// <param name="candidates">The label from which backport candidates are selected.</param>
         /// <param name="after">Skip until after this PR number</param>
-        static async Task<int> Main(string token, DirectoryInfo? repository, int? after = null)
+        static async Task<int> Main(
+            string token,
+            DirectoryInfo? repository,
+            string? candidates = null,
+            int? after = null)
         {
             if (string.IsNullOrWhiteSpace(token))
             {
@@ -44,11 +50,26 @@ namespace Backport
                 return 1;
             }
 
-            Console.WriteLine("Reading pull requests...");
+            if (string.IsNullOrWhiteSpace(candidates))
+            {
+                var releaseBranchRegex = new Regex("^release/(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$");
+                var match = releaseBranchRegex.Match(repo.Head.FriendlyName);
+
+                if (!match.Success)
+                {
+                    Console.WriteLine("Error: no label supplied and current branch is not a release branch.");
+                    return 1;
+                }
+
+                candidates = $"backport-candidate-{match.Groups[1].Value}.{match.Groups[2].Value}.x";
+                Console.WriteLine($"Label calculated as '{candidates}' from current branch '{repo.Head.FriendlyName}'.");
+            }
+
+            Console.WriteLine($"Reading pull requests with label {candidates}...");
 
             var query = new Query()
                 .Repository("Avalonia", "AvaloniaUI")
-                .PullRequests(labels: new[] { "backport-candidate" }, states: new[] { PullRequestState.Merged })
+                .PullRequests(labels: new[] { candidates }, states: new[] { PullRequestState.Merged })
                 .AllPages()
                 .Select(pr => new
                 {
@@ -91,7 +112,11 @@ namespace Backport
 
                 try
                 {
-                    var options = new CherryPickOptions { CommitOnSuccess = true };
+                    var options = new CherryPickOptions 
+                    { 
+                        CommitOnSuccess = true, 
+                        IgnoreWhitespaceChange = true,
+                    };
 
                     if (commit.Parents.Count() > 1)
                         options.Mainline = 1;
@@ -107,6 +132,10 @@ namespace Backport
                             Console.WriteLine("\nUser canceled.");
                             return 2;
                         }
+
+                        // We need to refresh the repository here by reading the status, otherwise libgit2 thinks
+                        // that we have uncommited changes.
+                        repo.RetrieveStatus();
                     }
                 }
                 catch (EmptyCommitException e)
@@ -115,6 +144,7 @@ namespace Backport
                 }
             }
 
+            Console.WriteLine("SUCCESS! Backport finished.");
             return 0;
         }
 

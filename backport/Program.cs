@@ -1,4 +1,6 @@
 ﻿using System;
+using System.CommandLine;
+using System.CommandLine.Parsing;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
@@ -20,18 +22,55 @@ namespace Backport
         /// <param name="repository">The path to the Avalonia repository. Default: current directory</param>
         /// <param name="candidates">The label from which backport candidates are selected.</param>
         /// <param name="after">Skip until after this PR number</param>
-        static async Task<int> Main(
-            string token,
-            DirectoryInfo? repository,
-            string? candidates = null,
-            int? after = null)
+        static async Task<int> Main(string[] args)
         {
-            if (string.IsNullOrWhiteSpace(token))
+            var tokenOption = new Option<string>(
+                name: "--token",
+                description: "The OAUTH token, with public_repo permission.")
+                {
+                    Arity = ArgumentArity.ExactlyOne,
+                };
+
+            var repositoryOption = new Option<DirectoryInfo>(
+                "--repository",
+                () => new DirectoryInfo(Directory.GetCurrentDirectory()),
+                "The path to the Avalonia repository. Default: current directory");
+
+            var candidatesOption = new Option<string>(
+                "--candidates",
+                "The label from which backport candidates are selected.");
+
+            var afterOption = new Option<int?>(
+                "--after",
+                "Skip until after this PR number");
+
+            var backportCommand = new Command("cherrypick", "Cherry-pick merged PRs")
             {
-                Console.WriteLine("Error: token not supplied.");
-                return 1;
+                tokenOption,
+                repositoryOption,
+                candidatesOption,
+                afterOption,
             };
 
+            backportCommand.AddAlias("cherry-pick");
+
+            var rootCommand = new RootCommand("Avalonia Backport")
+            {
+                backportCommand,
+            };
+
+            backportCommand.SetHandler(
+                async (token, repository, candidates, after) =>
+                {
+                    await Backport(token, repository, candidates, after);
+                }, 
+                tokenOption, repositoryOption, candidatesOption, afterOption);
+
+            return await rootCommand.InvokeAsync(args);
+        }
+
+        private static async Task<int> Backport(string token, DirectoryInfo repository, string candidates, int? after)
+        {
             var productInformation = new ProductHeaderValue("AvaloniaBackport", "0.0.1");
             var connection = new Connection(productInformation, token);
             Repository repo;
@@ -57,7 +96,7 @@ namespace Backport
 
                 if (!match.Success)
                 {
-                    Console.WriteLine("Error: no label supplied and current branch is not a release branch.");
+                    Console.WriteLine($"Error: no label supplied and current branch ({repo.Head.FriendlyName}) is not a release branch.");
                     return 1;
                 }
 
@@ -101,7 +140,7 @@ namespace Backport
 
             if (!Confirm())
             {
-                Console.WriteLine("\nUser canceled.");
+                Console.WriteLine("\nUser cancelled.");
                 return 2;
             }
 
@@ -112,9 +151,9 @@ namespace Backport
 
                 try
                 {
-                    var options = new CherryPickOptions 
-                    { 
-                        CommitOnSuccess = true, 
+                    var options = new CherryPickOptions
+                    {
+                        CommitOnSuccess = true,
                         IgnoreWhitespaceChange = true,
                     };
 
@@ -129,12 +168,12 @@ namespace Backport
 
                         if (!Confirm())
                         {
-                            Console.WriteLine("\nUser canceled.");
+                            Console.WriteLine("\nUser cancelled.");
                             return 2;
                         }
 
                         // We need to refresh the repository here by reading the status, otherwise libgit2 thinks
-                        // that we have uncommited changes.
+                        // that we have uncommitted changes.
                         repo.RetrieveStatus();
                     }
                 }

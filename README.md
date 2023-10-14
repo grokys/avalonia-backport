@@ -5,30 +5,30 @@ Tool for doing Avalonia backports
 ## Command
 
 ```
-backport
+Description:
   Avalonia Backport
 
 Usage:
-  backport [options]
+  backport [command] [options]
 
 Options:
-  --token <token>            The OAUTH token, with public_repo permission.
-  --repository <repository>  The path to the Avalonia repository. Default: current directory
-  --after <after>            Skip until after this PR number [default: ]
-  --version                  Show version information
-  -?, -h, --help             Show help and usage information
+  --version       Show version information
+  -?, -h, --help  Show help and usage information
+
+Commands:
+  cherry-pick, cherrypick  Cherry-pick merged PRs
+  label                    Label backported PRs```
 ```
 
-## Simple Usage
+## Cherry picking
 
-Running:
+Running the following where a release branch is checked out in the Avalonia repository:
 
 ```
-backport --token [token] --repository d:\projects\AvaloniaUI\Avalonia
+backport cherrypick --token [token] --repository d:\projects\AvaloniaUI\Avalonia
 ```
 
-Will first display the PRs that it has identified for backporting. These are PRs that have the `backport-candidate` label but not the `wont-backport` 
-label or any label that begins with the string `backported`:
+Will first display the PRs that it has identified for backporting. These are PRs that have a `backport-candidate-MAJ-MIN-x` label but not the `wont-backport` or `backported-MAJ-MIN-x` where `MAJ-MIN` is the current release branch version:
 
 ```
 4 PRs to backport:
@@ -80,4 +80,22 @@ Once all PRs have been merged to the branch, you need to:
 
 - Test!
 - Push the branch
-- Mark the relevant PRs with the `backported 0.10.x` etc label
+- Run the `label` command to label the PRs as backported
+
+## Labeling
+
+Running the following where a release branch is checked out in the Avalonia repository:
+
+```
+backport label --token [token] --repository d:\projects\AvaloniaUI\Avalonia
+```
+
+Will first display PRs that are tagged with a `backport-candidate` label for the current release branch, and already appear on the current release branch.
+
+After displaying a list of PRs, press `Y` to label these PRs with `backported-MAJ-MIN-x` where `MAJ-MIN` is the current release branch.
+
+## Release Branches
+
+A release branch is a branch with the format `release/MAJ.MIN`, for example `release/11.0` in which case MAJ=11 and MIN=0. On such branches the backport
+candidate and backported labels can be calculated automatically. If they cannot be calculated, they can be supplied as arguments to the `cherrypick` and
+`label` commands.

@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.CommandLine;
 using System.CommandLine.Builder;
 using System.CommandLine.Parsing;
-using System.Diagnostics.Metrics;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
@@ -25,9 +24,9 @@ namespace Backport
             var tokenOption = new Option<string>(
                 name: "--token",
                 description: "The OAUTH token.")
-                {
-                    Arity = ArgumentArity.ExactlyOne,
-                };
+            {
+                Arity = ArgumentArity.ExactlyOne,
+            };
 
             var repositoryOption = new Option<DirectoryInfo>(
                 "--repository",
@@ -45,6 +44,11 @@ namespace Backport
             var afterOption = new Option<int?>(
                 "--after",
                 "Skip until after this PR number");
+
+            var tagOption = new Option<System.Version?>(
+                "--tag",
+                parseArgument: x => System.Version.Parse(x.Tokens.Single().Value),
+                description: "The current release version tag [default: calculated from current commit tag]");
 
             var backportCommand = new Command("cherrypick", "Cherry-pick merged PRs")
             {
@@ -66,19 +70,25 @@ namespace Backport
                 afterOption,
             };
 
-            backportCommand.AddAlias("cherry-pick");
+            var changelogCommand = new Command("changelog", "Generate changelog")
+            {
+                tokenOption,
+                repositoryOption,
+                tagOption,
+            };
 
             var rootCommand = new RootCommand("Avalonia Backport")
             {
                 backportCommand,
                 labelCommand,
+                changelogCommand,
             };
 
             backportCommand.SetHandler(
                 async (token, repository, candidates, backported, after) =>
                 {
                     await Backport(token, repository, candidates, backported, after);
-                }, 
+                },
                 tokenOption, repositoryOption, candidatesOption, backportedOption, afterOption);
 
             labelCommand.SetHandler(
@@ -87,6 +97,13 @@ namespace Backport
                     await LabelBackported(token, repository, candidates, backported, after);
                 },
                 tokenOption, repositoryOption, candidatesOption, backportedOption, afterOption);
+
+            changelogCommand.SetHandler(
+                async (token, repository, version) =>
+                {
+                    await GenerateChangelog(token, repository, version);
+                },
+                tokenOption, repositoryOption, tagOption);
 
             var parser = new CommandLineBuilder(rootCommand)
                 .UseDefaults()
@@ -253,6 +270,62 @@ namespace Backport
             }
         }
 
+        private static async Task GenerateChangelog(string token, DirectoryInfo repository, System.Version? current)
+        {
+            var connection = new Connection(s_productInformation, token);
+            var repo = new Repository(repository.FullName);
+
+            current ??= GetVersionFromTag(repo);
+            var previous = GetPreviousVersionTag(repo, current);
+
+
+            var fromTag = repo.Tags[previous.ToString()];
+            var toTag = repo.Tags[current.ToString()];
+
+            var filter = new CommitFilter
+            {
+                ExcludeReachableFrom = fromTag,
+                IncludeReachableFrom = toTag,
+            };
+
+            var commits = repo.Commits.QueryBy(filter).ToList();
+
+            Console.WriteLine($"Found {commits.Count} commits between {previous} ... {current}\n");
+
+            var prMergeCommitRegex = new Regex(@"^Merge pull request #(\d+) from");
+            var prSquashMergeCommitRegex = new Regex(@"^.+? \(#(\d+)\)$", RegexOptions.Multiline);
+            var prNumbers = new List<int>();
+
+            foreach (var commit in commits)
+            {
+                if (prMergeCommitRegex.Match(commit.Message) is { } match && match.Success)
+                    prNumbers.Add(int.Parse(match.Groups[1].Value));
+                else if (prSquashMergeCommitRegex.Match(commit.Message) is { } squashMatch && squashMatch.Success)
+                    prNumbers.Add(int.Parse(squashMatch.Groups[1].Value));
+            }
+
+            Console.WriteLine($"Found {prNumbers.Count} merge commits between {previous} ... {current}\n\n");
+
+            Console.WriteLine("## What's Changed");
+
+            foreach (var prNumber in prNumbers.Distinct().OrderBy(x => x))
+            {
+                var query = new Query()
+                    .Repository("Avalonia", "AvaloniaUI")
+                    .PullRequest(prNumber)
+                    .Select(x => new
+                    {
+                        x.Title,
+                        x.Author.Login,
+                        x.Url
+                    })
+                    .Compile();
+                var pr = await connection.Run(query);
+
+                Console.WriteLine($"* {pr.Title} by @{pr.Login} in {pr.Url}");
+            }
+        }
+
         private static void Confirm()
         {
             var key = Console.ReadKey();
@@ -263,8 +336,8 @@ namespace Backport
         }
 
         private static async Task<List<Candidate>> GetBackportCandidates(
-            Connection connection, 
-            string candidates, 
+            Connection connection,
+            string candidates,
             string backported,
             int? after)
         {
@@ -340,6 +413,44 @@ namespace Backport
             }
 
             throw new ArgumentException($"Current branch '{branch}' is not a release branch. Specify the --candidates and --backported labels explicitly.");
+        }
+
+        private static System.Version GetVersionFromTag(Repository repo)
+        {
+            var head = repo.Head.Tip;
+
+            foreach (var tag in repo.Tags)
+            {
+                if (tag.PeeledTarget is Commit commit &&
+                    commit.Sha == head.Sha &&
+                    System.Version.TryParse(tag.FriendlyName, out var version))
+                {
+                    return version;
+                }
+            }
+
+            throw new ArgumentException($"The current HEAD '{head.Sha}' is not tagged with a version. Specify the --tag explicitly.");
+        }
+
+        private static object GetPreviousVersionTag(Repository repo, System.Version current)
+        {
+            var invalidVersion = new System.Version(0, 0);
+            var result = invalidVersion;
+
+            foreach (var tag in repo.Tags)
+            {
+                if (tag.PeeledTarget is Commit commit &&
+                    System.Version.TryParse(tag.FriendlyName, out var version) &&
+                    version < current && version > result)
+                {
+                    result = version;
+                }
+            }
+
+            if (result != invalidVersion)
+                return result;
+
+            throw new ArgumentException($"Could not find the previous version to '{current}' from tags in the repository.");
         }
 
         private record Candidate(ID Id, int Number, string Title, List<string> Labels, string MergeCommit, DateTimeOffset? MergedAt);

@@ -17,7 +17,8 @@ Options:
 
 Commands:
   cherry-pick, cherrypick  Cherry-pick merged PRs
-  label                    Label backported PRs```
+  label                    Label backported PRs
+  changelog                Generate changelog
 ```
 
 ## Cherry picking
@@ -99,3 +100,11 @@ After displaying a list of PRs, press `Y` to label these PRs with `backported-MA
 A release branch is a branch with the format `release/MAJ.MIN`, for example `release/11.0` in which case MAJ=11 and MIN=0. On such branches the backport
 candidate and backported labels can be calculated automatically. If they cannot be calculated, they can be supplied as arguments to the `cherrypick` and
 `label` commands.
+
+## Release Nodes
+
+Running the following where a release tag is checked out in the Avalonia repository will generate release notes:
+
+```
+backport changelog --token [token] --repository d:\projects\AvaloniaUI\Avalonia
+```

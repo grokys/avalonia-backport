@@ -341,7 +341,7 @@ namespace Backport
             string backported,
             int? after)
         {
-            Console.WriteLine($"Reading pull requests with label {candidates}...");
+            Console.WriteLine($"Reading pull requests with label '{candidates}'...");
 
             var query = new Query()
                 .Repository("Avalonia", "AvaloniaUI")

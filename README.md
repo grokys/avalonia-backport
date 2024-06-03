@@ -21,6 +21,21 @@ Commands:
   changelog                Generate changelog
 ```
 
+## Creating a Personal Access Token
+
+To create a personal access token, go to:
+
+- GitHub.com -> Click on your Avatar -> Settings -> Developer settings -> Personal access tokens -> Fine-grained tokens
+- Click "Generate new token"
+- Set the expiration to a suitable value
+- Give the token a name e.g. "avalonia-backport"
+- Select "AvaloniaUI" under "Resource owner"
+- Select "Only select repositories" and then "AvaloniaUI/Avalonia"
+- Under "Permissions" give the "Pull Requests" permission "Read and write" access
+- Click "Generate token"
+
+This token should be passed with the `--token` option to all commands.
+
 ## Cherry picking
 
 Running the following where a release branch is checked out in the Avalonia repository:

@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using LibGit2Sharp;
 using Octokit.GraphQL;
 using Octokit.GraphQL.Model;
+using Semver;
 using Commit = LibGit2Sharp.Commit;
 using Repository = LibGit2Sharp.Repository;
 
@@ -45,10 +46,15 @@ namespace Backport
                 "--after",
                 "Skip until after this PR number");
 
-            var tagOption = new Option<System.Version?>(
+            var tagOption = new Option<SemVersion?>(
                 "--tag",
-                parseArgument: x => System.Version.Parse(x.Tokens.Single().Value),
+                parseArgument: x => SemVersion.Parse(x.Tokens.Single().Value, SemVersionStyles.Any),
                 description: "The current release version tag [default: calculated from current commit tag]");
+
+            var previousTagOption = new Option<SemVersion?>(
+                "--previous-tag",
+                parseArgument: x => SemVersion.Parse(x.Tokens.Single().Value, SemVersionStyles.Any),
+                description: "The previous release version tag [default: calculated from current commit tag]");
 
             var backportCommand = new Command("cherrypick", "Cherry-pick merged PRs")
             {
@@ -75,6 +81,7 @@ namespace Backport
                 tokenOption,
                 repositoryOption,
                 tagOption,
+                previousTagOption,
             };
 
             var rootCommand = new RootCommand("Avalonia Backport")
@@ -99,11 +106,11 @@ namespace Backport
                 tokenOption, repositoryOption, candidatesOption, backportedOption, afterOption);
 
             changelogCommand.SetHandler(
-                async (token, repository, version) =>
+                async (token, repository, version, previous) =>
                 {
-                    await GenerateChangelog(token, repository, version);
+                    await GenerateChangelog(token, repository, version, previous);
                 },
-                tokenOption, repositoryOption, tagOption);
+                tokenOption, repositoryOption, tagOption, previousTagOption);
 
             var parser = new CommandLineBuilder(rootCommand)
                 .UseDefaults()
@@ -270,13 +277,17 @@ namespace Backport
             }
         }
 
-        private static async Task GenerateChangelog(string token, DirectoryInfo repository, System.Version? current)
+        private static async Task GenerateChangelog(
+            string token,
+            DirectoryInfo repository,
+            SemVersion? current,
+            SemVersion? previous)
         {
             var connection = new Connection(s_productInformation, token);
             var repo = new Repository(repository.FullName);
 
             current ??= GetVersionFromTag(repo);
-            var previous = GetPreviousVersionTag(repo, current);
+            previous ??= GetPreviousVersionTag(repo, current);
 
 
             var fromTag = repo.Tags[previous.ToString()];
@@ -310,19 +321,26 @@ namespace Backport
 
             foreach (var prNumber in prNumbers.Distinct().OrderBy(x => x))
             {
-                var query = new Query()
-                    .Repository("Avalonia", "AvaloniaUI")
-                    .PullRequest(prNumber)
-                    .Select(x => new
-                    {
-                        x.Title,
-                        x.Author.Login,
-                        x.Url
-                    })
-                    .Compile();
-                var pr = await connection.Run(query);
+                try
+                {
+                    var query = new Query()
+                        .Repository("Avalonia", "AvaloniaUI")
+                        .PullRequest(prNumber)
+                        .Select(x => new
+                        {
+                            x.Title,
+                            x.Author.Login,
+                            x.Url
+                        })
+                        .Compile();
+                    var pr = await connection.Run(query);
 
-                Console.WriteLine($"* {pr.Title} by @{pr.Login} in {pr.Url}");
+                    Console.WriteLine($"* {pr.Title} by @{pr.Login} in {pr.Url}");
+                }
+                catch (Exception e)
+                {
+                    Console.Error.WriteLine($"Error: {e.Message}");
+                }
             }
         }
 
@@ -415,7 +433,7 @@ namespace Backport
             throw new ArgumentException($"Current branch '{branch}' is not a release branch. Specify the --candidates and --backported labels explicitly.");
         }
 
-        private static System.Version GetVersionFromTag(Repository repo)
+        private static SemVersion GetVersionFromTag(Repository repo)
         {
             var head = repo.Head.Tip;
 
@@ -423,7 +441,7 @@ namespace Backport
             {
                 if (tag.PeeledTarget is Commit commit &&
                     commit.Sha == head.Sha &&
-                    System.Version.TryParse(tag.FriendlyName, out var version))
+                    SemVersion.TryParse(tag.FriendlyName, out var version))
                 {
                     return version;
                 }
@@ -432,15 +450,15 @@ namespace Backport
             throw new ArgumentException($"The current HEAD '{head.Sha}' is not tagged with a version. Specify the --tag explicitly.");
         }
 
-        private static object GetPreviousVersionTag(Repository repo, System.Version current)
+        private static SemVersion GetPreviousVersionTag(Repository repo, SemVersion current)
         {
-            var invalidVersion = new System.Version(0, 0);
+            var invalidVersion = new SemVersion(0, 0);
             var result = invalidVersion;
 
             foreach (var tag in repo.Tags)
             {
                 if (tag.PeeledTarget is Commit commit &&
-                    System.Version.TryParse(tag.FriendlyName, out var version) &&
+                    SemVersion.TryParse(tag.FriendlyName, out var version) &&
                     version < current && version > result)
                 {
                     result = version;

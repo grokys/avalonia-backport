@@ -289,30 +289,30 @@ namespace Backport
             current ??= GetVersionFromTag(repo);
             previous ??= GetPreviousVersionTag(repo, current);
 
+            List<int> prNumbers;
+            List<int>? missingPrNumbers = null;
 
-            var fromTag = repo.Tags[previous.ToString()];
-            var toTag = repo.Tags[current.ToString()];
-
-            var filter = new CommitFilter
+            // If we're generating notes for a minor version, then PRs may have been backported to both
+            // branches separately.
+            if (current.Minor != previous.Minor)
             {
-                ExcludeReachableFrom = fromTag,
-                IncludeReachableFrom = toTag,
-            };
+                // We're only going to support generating notes for the same major version for the moment.
+                if (current.Major != previous.Major)
+                    throw new InvalidOperationException("Cannot generate release notes for different major versions.");
 
-            var commits = repo.Commits.QueryBy(filter).ToList();
+                // Get all PRs merged to each of the branches back to the common version.
+                var commonVersion = new SemVersion(current.Major);
+                var currentPRs = GetMergedPullRequests(repo, current, commonVersion);
+                var previousPRs = GetMergedPullRequests(repo, previous, commonVersion);
 
-            Console.WriteLine($"Found {commits.Count} commits between {previous} ... {current}\n");
-
-            var prMergeCommitRegex = new Regex(@"^Merge pull request #(\d+) from");
-            var prSquashMergeCommitRegex = new Regex(@"^.+? \(#(\d+)\)$", RegexOptions.Multiline);
-            var prNumbers = new List<int>();
-
-            foreach (var commit in commits)
+                // Now we can find the PRs that were merged to the current branch but not the previous branch.
+                // Also make a note of any PRs that have been merged to the previous branch but not the current.
+                prNumbers = currentPRs.Except(previousPRs).ToList();
+                missingPrNumbers = previousPRs.Except(currentPRs).ToList();
+            }
+            else
             {
-                if (prMergeCommitRegex.Match(commit.Message) is { } match && match.Success)
-                    prNumbers.Add(int.Parse(match.Groups[1].Value));
-                else if (prSquashMergeCommitRegex.Match(commit.Message) is { } squashMatch && squashMatch.Success)
-                    prNumbers.Add(int.Parse(squashMatch.Groups[1].Value));
+                prNumbers = GetMergedPullRequests(repo, current, previous);
             }
 
             Console.WriteLine($"Found {prNumbers.Count} merge commits between {previous} ... {current}\n\n");
@@ -341,6 +341,12 @@ namespace Backport
                 {
                     Console.Error.WriteLine($"Error: {e.Message}");
                 }
+            }
+
+            if (missingPrNumbers is not null)
+            {
+                Console.WriteLine("\n## Missing PRs");
+                Console.WriteLine(string.Join(", ", missingPrNumbers));
             }
         }
 
@@ -416,6 +422,39 @@ namespace Backport
                 throw new ArgumentException($"Label '{name}' not found.");
 
             return id;
+        }
+
+        private static List<int> GetMergedPullRequests(
+            Repository repo,
+            SemVersion current,
+            SemVersion previous)
+        {
+            var fromTag = repo.Tags[previous.ToString()];
+            var toTag = repo.Tags[current.ToString()];
+
+            var filter = new CommitFilter
+            {
+                ExcludeReachableFrom = fromTag,
+                IncludeReachableFrom = toTag,
+            };
+
+            var commits = repo.Commits.QueryBy(filter).ToList();
+
+            Console.WriteLine($"Found {commits.Count} commits between {previous} ... {current}\n");
+
+            var prMergeCommitRegex = new Regex(@"^Merge pull request #(\d+) from");
+            var prSquashMergeCommitRegex = new Regex(@"^.+? \(#(\d+)\)$", RegexOptions.Multiline);
+            var result = new List<int>();
+
+            foreach (var commit in commits)
+            {
+                if (prMergeCommitRegex.Match(commit.Message) is { } match && match.Success)
+                    result.Add(int.Parse(match.Groups[1].Value));
+                else if (prSquashMergeCommitRegex.Match(commit.Message) is { } squashMatch && squashMatch.Success)
+                    result.Add(int.Parse(squashMatch.Groups[1].Value));
+            }
+
+            return result;
         }
 
         private static (int major, int minor) GetVersionFromBranch(string branch, string option)

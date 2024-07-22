@@ -317,7 +317,9 @@ namespace Backport
 
             Console.WriteLine($"Found {prNumbers.Count} merge commits between {previous} ... {current}\n\n");
 
-            Console.WriteLine("## What's Changed");
+            var fixes = new List<PullRequestModel>();
+            var features = new List<PullRequestModel>();
+            var misc = new List<PullRequestModel>();
 
             foreach (var prNumber in prNumbers.Distinct().OrderBy(x => x))
             {
@@ -326,21 +328,55 @@ namespace Backport
                     var query = new Query()
                         .Repository("Avalonia", "AvaloniaUI")
                         .PullRequest(prNumber)
-                        .Select(x => new
+                        .Select(x => new PullRequestModel
                         {
-                            x.Title,
-                            x.Author.Login,
-                            x.Url
+                            Title = x.Title,
+                            Author = x.Author.Login,
+                            Url = x.Url,
+                            Labels = x.Labels(100, null, null, null, null)
+                                      .Select(x => x.Nodes)
+                                      .Select(x => x.Name)
+                                      .ToList(),
                         })
                         .Compile();
                     var pr = await connection.Run(query);
 
-                    Console.WriteLine($"* {pr.Title} by @{pr.Login} in {pr.Url}");
+                    if (pr.Labels?.Contains("bug") == true)
+                        fixes.Add(pr);
+                    else if (pr.Labels?.Contains("enhancement") == true)
+                        features.Add(pr);
+                    else
+                        misc.Add(pr);
+                    
+                    Console.Write('.');
                 }
                 catch (Exception e)
                 {
-                    Console.Error.WriteLine($"Error: {e.Message}");
+                    Console.Error.WriteLine($"\nError: {e.Message}");
                 }
+            }
+
+            Console.WriteLine("\n## What's Changed");
+
+            if (features.Count > 0)
+            {
+                Console.WriteLine("\n### Features");
+                foreach (var pr in features)
+                    Console.WriteLine($"* {pr.Title} by @{pr.Author} in {pr.Url}");
+            }
+
+            if (fixes.Count > 0)
+            {
+                Console.WriteLine("\n### Fixes");
+                foreach (var pr in fixes)
+                    Console.WriteLine($"* {pr.Title} by @{pr.Author} in {pr.Url}");
+            }
+
+            if (misc.Count > 0)
+            {
+                Console.WriteLine("\n### Miscellaneous");
+                foreach (var pr in misc)
+                    Console.WriteLine($"* {pr.Title} by @{pr.Author} in {pr.Url}");
             }
 
             if (missingPrNumbers is not null)
@@ -439,9 +475,6 @@ namespace Backport
             };
 
             var commits = repo.Commits.QueryBy(filter).ToList();
-
-            Console.WriteLine($"Found {commits.Count} commits between {previous} ... {current}\n");
-
             var prMergeCommitRegex = new Regex(@"^Merge pull request #(\d+) from");
             var prSquashMergeCommitRegex = new Regex(@"^.+? \(#(\d+)\)$", RegexOptions.Multiline);
             var result = new List<int>();

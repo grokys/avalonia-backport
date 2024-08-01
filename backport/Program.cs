@@ -150,6 +150,33 @@ namespace Backport
                 Console.WriteLine($"#{pr.Number} {pr.Title}");
             }
 
+        retry:
+            Console.WriteLine("\nEnter a comma-separated list of PR numbers to select, or press Enter to select all:");
+            
+            if (Console.ReadLine() is { } selectedString && !string.IsNullOrWhiteSpace(selectedString))
+            {
+                try
+                {
+                    var selected = selectedString.Split(',').Select(x => int.Parse(x)).ToHashSet();
+
+                    foreach (var i in selected)
+                    {
+                        if (!pullRequests.Any(x => x.Number == i))
+                        {
+                            Console.Error.WriteLine($"PR #{i} not found in the list of candidates.");
+                            goto retry;
+                        }
+                    }
+
+                    pullRequests = pullRequests.Where(x => selected.Contains(x.Number)).ToList();
+                }
+                catch (Exception e)
+                {
+                    Console.Error.WriteLine($"Error: {e.Message}");
+                    goto retry;
+                }
+            }
+
             Console.WriteLine($"\n{pullRequests.Count} PRs will be merged into branch '{repo.Head.FriendlyName}' of '{repository.FullName}'");
             Console.WriteLine($"Signature: {signature}.");
             Console.WriteLine("Press Y to continue, any other key to abort.");

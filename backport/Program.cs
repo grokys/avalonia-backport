@@ -147,7 +147,18 @@ namespace Backport
 
             foreach (var pr in pullRequests)
             {
-                Console.WriteLine($"#{pr.Number} {pr.Title}");
+                Console.Write($"#{pr.Number} {pr.Title}");
+
+                if (pr.Labels.Contains("priority"))
+                {
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.WriteLine(" [priority]");
+                    Console.ResetColor();
+                }
+                else
+                {
+                   Console.WriteLine();
+                }
             }
 
         retry:

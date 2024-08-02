@@ -222,7 +222,7 @@ namespace Backport
 
                     if (result.Status == CherryPickStatus.Conflicts)
                     {
-                        Console.WriteLine("CONFLICT. Fix the conflict and press Y to continue, any other key to abort");
+                        Console.WriteLine("CONFLICT. Fix the conflict with git 'cherry-pick --continue' and press Y to continue, any other key to abort");
                         Confirm();
 
                         // We need to refresh the repository here by reading the status, otherwise libgit2 thinks

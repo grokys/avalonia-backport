@@ -19,6 +19,13 @@ namespace Backport
     internal class Program
     {
         private static ProductHeaderValue s_productInformation = new ProductHeaderValue("AvaloniaBackport", "0.0.1");
+        private static Dictionary<string, ConsoleColor> s_labels = new()
+        {
+            { "bug", ConsoleColor.Green },
+            { "enhancement", ConsoleColor.Blue },
+            { "feature", ConsoleColor.Blue },
+            { "priority", ConsoleColor.Red },
+        };
 
         static async Task<int> Main(string[] args)
         {
@@ -149,16 +156,17 @@ namespace Backport
             {
                 Console.Write($"#{pr.Number} {pr.Title}");
 
-                if (pr.Labels.Contains("priority"))
+                foreach (var label in pr.Labels)
                 {
-                    Console.ForegroundColor = ConsoleColor.Red;
-                    Console.WriteLine(" [priority]");
-                    Console.ResetColor();
+                    if (s_labels.TryGetValue(label, out var color))
+                    {
+                        Console.ForegroundColor = color;
+                        Console.Write($" [{label}]");
+                        Console.ResetColor();
+                    }
                 }
-                else
-                {
-                   Console.WriteLine();
-                }
+
+                Console.WriteLine();
             }
 
         retry:

@@ -389,7 +389,7 @@ namespace Backport
 
                     if (pr.Labels?.Contains("bug") == true)
                         fixes.Add(pr);
-                    else if (pr.Labels?.Contains("enhancement") == true)
+                    else if (pr.Labels?.Contains("enhancement") == true || pr.Labels?.Contains("feature") == true)
                         features.Add(pr);
                     else
                         misc.Add(pr);

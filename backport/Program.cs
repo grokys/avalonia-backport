@@ -24,7 +24,7 @@ namespace Backport
             { "bug", ConsoleColor.Green },
             { "enhancement", ConsoleColor.Blue },
             { "feature", ConsoleColor.Blue },
-            { "priority", ConsoleColor.Red },
+            { "customer-priority", ConsoleColor.Red },
         };
 
         static async Task<int> Main(string[] args)
